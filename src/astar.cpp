@@ -1,10 +1,11 @@
-#include "pathing.hpp"
-#include "node.hpp"
 #include <stdexcept>
 #include <vector>
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <format>
+#include "pathing.hpp"
+#include "node.hpp"
 
 using namespace pathfinder2;
 
@@ -55,11 +56,15 @@ std::vector<PathPoint> AStar::find_path(const NodeMatrix &matrix) {
         for (int i = 0; i < search_nodes_len; i++) {
             auto current_node = search_nodes[i];
 
-            std::array<Point, 4> contenders = {
+            std::array<Point, 8> contenders = {
                 current_node + Point{0, 1},
                 current_node + Point{1, 0},
                 current_node + Point{0, -1},
                 current_node + Point{-1, 0},
+                current_node + Point{-1, -1},
+                current_node + Point{1, 1},
+                current_node + Point{1, -1},
+                current_node + Point{-1, 1},
             };
 
             for (auto contender : contenders) {
@@ -89,21 +94,52 @@ std::vector<PathPoint> AStar::find_path(const NodeMatrix &matrix) {
         }
         
         if (lowest_f_cost_cost < 0)
-            throw std::runtime_error("https://files.catbox.moe/10i0jg.jpg");
+            return {}; // no possible way to endpoint
 
         search_nodes.push_back(lowest_f_cost_point);
         parent_nodes.push_back(lowest_f_cost_parent);
 
+        // updates parents of surrounding nodes if the new node gets them a lower hcost
+        std::array<Point, 8> nodes_to_update = {
+            lowest_f_cost_point + Point{0, 1},
+            lowest_f_cost_point + Point{1, 0},
+            lowest_f_cost_point + Point{0, -1},
+            lowest_f_cost_point + Point{-1, 0},
+            lowest_f_cost_point + Point{-1, -1},
+            lowest_f_cost_point + Point{1, 1},
+            lowest_f_cost_point + Point{1, -1},
+            lowest_f_cost_point + Point{-1, 1},
+        };
+
+        for (auto cur_node : nodes_to_update) {
+            auto found = std::find(std::begin(search_nodes), std::end(search_nodes), cur_node);
+            if (found == std::end(search_nodes))
+                continue;
+            int ind = found - std::begin(search_nodes);
+
+            int h_cost_lhs_post  = std::floor(10 * dist(*found, lowest_f_cost_point));
+            int h_cost_rhs_post  = calculate_h_cost(search_nodes, parent_nodes, search_nodes.size() - 1);
+            int h_cost_rhs_pre  = calculate_h_cost(search_nodes, parent_nodes, ind);
+
+            if (h_cost_lhs_post + h_cost_rhs_post < h_cost_rhs_pre)
+                parent_nodes[ind] = search_nodes.size() - 1;
+        }
+
+        // checks if we're done
         if (lowest_f_cost_point == end_point)
-            break; // we're done
+            break;
     }
 
     // paint searched and optimal nodes
 
     std::vector<PathPoint> ret{};
     
-    for (auto p : search_nodes)
-        ret.push_back({p, false, std::nullopt});
+    for (int i = 0; i < static_cast<int>(search_nodes.size()); i++) {
+        int h_cost = calculate_h_cost(search_nodes, parent_nodes, i);
+        int g_cost = std::floor(10 * dist(search_nodes[i], end_point));
+        auto msg = std::format("h_cost: {:3} g_cost: {:3} f_cost: {:3}", h_cost, g_cost, h_cost + g_cost);
+        ret.push_back({search_nodes[i], false, msg});
+    }
 
     for (int i = search_nodes.size() - 1; parent_nodes[i] != -1; i = parent_nodes[i])
         ret[i].is_optimal = true;

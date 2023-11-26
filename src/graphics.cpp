@@ -9,6 +9,7 @@
 #include "node.hpp"
 #include "graphics.hpp"
 #include "pathing.hpp"
+#include "maze.hpp"
 
 using namespace pathfinder2;
 using namespace pathfinder2::ui;
@@ -123,6 +124,7 @@ void draw_msg(const char *msg, TTF_Font &font, SDL_Renderer &renderer) {
     SDL_DestroyTexture(text_text);
 }
 
+// all of this code is exception safe so dw
 void draw_frame_ctr(TTF_Font &font, SDL_Renderer &renderer) {
     static unsigned long frame_cnt = 0;
     
@@ -189,6 +191,7 @@ int pathfinder2::ui::run() {
     size_t grid_width_nodes = node_grid_width / textures.node_text_size.x;
     size_t grid_height_nodes = node_grid_height / textures.node_text_size.y;
     NodeMatrix node_matrix{grid_width_nodes, {grid_height_nodes, Node::Walkable}};
+    generate_maze(node_matrix);
 
     // TTF init stuff
 
@@ -254,12 +257,15 @@ int pathfinder2::ui::run() {
 
                 if (start_cnt == 1 && end_cnt == 1) {
                     pathing_result = pathing_algo.find_path(node_matrix);
+                    if (pathing_result.size() == 0)
+                        draw_msg("There is no way to the endpoint from the startpoint", *app_font, *renderer);
                 }
-                else if (start_cnt != 1) {
-                    draw_msg("There has to be exactly one start (blue) node", *app_font, *renderer);
-                }
-                else if (end_cnt != 1) {
-                    draw_msg("There has to be exactly one end (red) node", *app_font, *renderer);
+                else {
+                    pathing_result = {};
+                    if (start_cnt != 1)
+                        draw_msg("There has to be exactly one start (blue) node", *app_font, *renderer);
+                    else if (end_cnt != 1)
+                        draw_msg("There has to be exactly one end (red) node", *app_font, *renderer);
                 }
             }
 
