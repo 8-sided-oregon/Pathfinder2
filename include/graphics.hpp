@@ -11,8 +11,8 @@ namespace pathfinder2 {
         constexpr const int window_width = 900;
         constexpr const int window_height = 1000;
 
-        constexpr const int node_grid_width = 900;
-        constexpr const int node_grid_height = 900;
+        constexpr const int node_height_px = 60;
+        constexpr const int node_width_px = 60;
 
         constexpr const char *walkable_texture_path = BASE_ASSET_PATH "00walkable.bmp";
         constexpr const char *obstical_texture_path = BASE_ASSET_PATH "01obstical.bmp";

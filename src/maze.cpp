@@ -48,8 +48,7 @@ void pathfinder2::generate_maze(NodeMatrix &matrix) {
             bool is_diagonal = wall_nodes_offsets[i].first != 0 && wall_nodes_offsets[i].second != 0;
 
             if (!is_diagonal && !is_in)
-                //if (matrix[cur_wall_node.first][cur_wall_node.second] != Node::Obstical)
-                    dir_opts.push_back(wall_nodes_offsets[i]);
+                dir_opts.push_back(wall_nodes_offsets[i]);
 
             if (is_diagonal || !is_in)
                 matrix[cur_wall_node.first][cur_wall_node.second] = Node::Obstical;

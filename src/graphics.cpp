@@ -45,7 +45,6 @@ struct GameTextures {
     using text_ptr = std::unique_ptr<SDL_Texture, void (*)(SDL_Texture *)>;
 
     text_ptr walkable, obstical, start, end, suboptimal, optimal;
-    SDL_Point node_text_size;
 
     GameTextures(SDL_Renderer *renderer) :
         walkable{load_texture(renderer, walkable_texture_path), texture_deleter},
@@ -55,7 +54,10 @@ struct GameTextures {
         suboptimal{load_texture(renderer, suboptimal_texture_path), texture_deleter},
         optimal{load_texture(renderer, optimal_texture_path), texture_deleter}
     {
+        SDL_Point node_text_size;
         SDL_QueryTexture(&*walkable, nullptr, nullptr, &node_text_size.x, &node_text_size.y);
+        if (node_text_size.x != node_width_px || node_text_size.y != node_height_px)
+            throw std::runtime_error("incorrect texture size loaded");
     }
 
     SDL_Texture &node2text(Node node) {
@@ -74,13 +76,13 @@ void draw_cells(
         SDL_Renderer &renderer, 
         GameTextures &textures) 
 {
-    SDL_Rect dst{0, 0, textures.node_text_size.x, textures.node_text_size.y};
+    SDL_Rect dst{0, 0, node_width_px, node_height_px};
     int outer_len = nodes.size();
     int inner_len = nodes[0].size();
     for (int x = 0; x < outer_len; x++) {
         for (int y = 0; y < inner_len; y++) {
-            dst.x = x * textures.node_text_size.x;
-            dst.y = y * textures.node_text_size.y;
+            dst.x = x * node_width_px;
+            dst.y = y * node_height_px;
             SDL_RenderCopy(&renderer, &textures.node2text(nodes[x][y]), nullptr, &dst);
         }
     }
@@ -89,8 +91,8 @@ void draw_cells(
         if (nodes[current_point.point.first][current_point.point.second] != Node::Walkable)
             continue;
 
-        dst.x = current_point.point.first * textures.node_text_size.x;
-        dst.y = current_point.point.second * textures.node_text_size.y;
+        dst.x = current_point.point.first * node_width_px;
+        dst.y = current_point.point.second * node_height_px;
         SDL_Texture *text = nullptr;
         if (current_point.is_optimal)
             text = &*textures.optimal;
@@ -101,10 +103,14 @@ void draw_cells(
 }
 
 // all of this code is exception safe so dw
-void draw_msg(const char *msg, TTF_Font &font, SDL_Renderer &renderer) {
+void draw_msg(const char *msg, TTF_Font &font, SDL_Renderer &renderer) noexcept {
     // clear the text portion of the window
 
-    SDL_Rect dst{0, node_grid_height, window_width, window_height - node_grid_height};
+    SDL_Rect dst{
+        0, 
+        node_grid_height * node_height_px, 
+        window_width, 
+        window_height - node_grid_height * node_height_px};
     SDL_SetRenderDrawColor(&renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(&renderer, &dst);
     
@@ -115,7 +121,7 @@ void draw_msg(const char *msg, TTF_Font &font, SDL_Renderer &renderer) {
 
     SDL_GetClipRect(text_surf, &dst);
     dst.x = 0;
-    dst.y = node_grid_height;
+    dst.y = node_grid_height * node_height_px;
 
     SDL_RenderCopy(&renderer, text_text, nullptr, &dst);
 
@@ -125,7 +131,7 @@ void draw_msg(const char *msg, TTF_Font &font, SDL_Renderer &renderer) {
 }
 
 // all of this code is exception safe so dw
-void draw_frame_ctr(TTF_Font &font, SDL_Renderer &renderer) {
+void draw_frame_ctr(TTF_Font &font, SDL_Renderer &renderer) noexcept {
     static unsigned long frame_cnt = 0;
     
     // create and draw the text
@@ -188,9 +194,7 @@ int pathfinder2::ui::run() {
     }
 
     GameTextures textures{&*renderer};
-    size_t grid_width_nodes = node_grid_width / textures.node_text_size.x;
-    size_t grid_height_nodes = node_grid_height / textures.node_text_size.y;
-    NodeMatrix node_matrix{grid_width_nodes, {grid_height_nodes, Node::Walkable}};
+    NodeMatrix node_matrix{node_grid_width};
     generate_maze(node_matrix);
 
     // TTF init stuff
@@ -218,6 +222,8 @@ int pathfinder2::ui::run() {
     std::vector<PathPoint> pathing_result{};
     int last_mouse_x = -1, last_mouse_y = -1;
 
+    draw_msg("e - generate maze | c - clear board | s - change algorithm | q - quit", *app_font, *renderer);
+
     for (bool quit_flag = false; !quit_flag;) {
         SDL_Event event;
 
@@ -229,15 +235,33 @@ int pathfinder2::ui::run() {
                 quit_flag = true;
             }
 
+            if (event.type == SDL_KEYDOWN) {
+                auto pressed = event.key.keysym.sym;
+                if (pressed == SDLK_e) {
+                    for (auto &col : node_matrix)
+                        col.fill(Node::Walkable);
+                    generate_maze(node_matrix);
+                } 
+                else if (pressed == SDLK_c) {
+                    for (auto &col : node_matrix)
+                        col.fill(Node::Walkable);
+                }
+                else if (pressed == SDLK_e) {
+                    // TODO
+                }
+
+                recompute_required = true;
+            }
+
             if (event.type == SDL_MOUSEBUTTONDOWN) {
-                int x = event.button.x / textures.node_text_size.x;
-                int y = event.button.y / textures.node_text_size.y;
+                int x = event.button.x / node_width_px;
+                int y = event.button.y / node_height_px;
 
                 if (event.button.button == SDL_BUTTON_LEFT) {
                     ++node_matrix[x][y];
                     recompute_required = true;
                 }
-                if (event.button.button == SDL_BUTTON_RIGHT) {
+                else if (event.button.button == SDL_BUTTON_RIGHT) {
                     --node_matrix[x][y];
                     recompute_required = true;
                 }
@@ -258,7 +282,7 @@ int pathfinder2::ui::run() {
                 if (start_cnt == 1 && end_cnt == 1) {
                     pathing_result = pathing_algo.find_path(node_matrix);
                     if (pathing_result.size() == 0)
-                        draw_msg("There is no way to the endpoint from the startpoint", *app_font, *renderer);
+                        draw_msg("There is no way to the end node from the start node", *app_font, *renderer);
                 }
                 else {
                     pathing_result = {};
@@ -278,8 +302,8 @@ int pathfinder2::ui::run() {
         // draws text for the cell underneeth the cursor when the cursor position changes
         if (last_mouse_x != mouse_x || last_mouse_y != mouse_y) {
             for (const auto &cur_result : pathing_result) {
-                if (mouse_x / textures.node_text_size.x == cur_result.point.first &&
-                    mouse_y / textures.node_text_size.y == cur_result.point.second &&
+                if (mouse_x / node_width_px == cur_result.point.first &&
+                    mouse_y / node_height_px == cur_result.point.second &&
                     cur_result.text != std::nullopt) 
                 {
                     draw_msg(cur_result.text->c_str(), *app_font, *renderer);
